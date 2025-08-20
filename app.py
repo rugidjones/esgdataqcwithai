@@ -7,6 +7,9 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 import io # To handle the uploaded file-like object
+import requests
+import json
+import time
 
 # Suppress pandas RuntimeWarning for calculations with NaNs
 warnings.filterwarnings("ignore", "invalid value encountered in subtract", RuntimeWarning)
@@ -27,6 +30,50 @@ current_client_name = st.text_input("Please enter the client name:", value="Clie
 uploaded_data_file = st.file_uploader("Upload Raw_Data_Table_S2.xlsx", type=["xlsx"])
 uploaded_fp_file = st.file_uploader("Upload false_positives_CAPREIT.txt (or click 'Cancel' if not applicable)", type=["txt"])
  
+# --- AI INTEGRATION FUNCTION ---
+def generate_ai_summary(bill_data):
+    """
+    Calls the Gemini API to generate a natural language summary of an anomaly.
+    """
+    prompt = f"""
+    Analyze the following utility bill data and provide a concise, natural language explanation of why it might be considered an anomaly.
+
+    Bill Data:
+    - Meter Number: {bill_data.get('Meter Number', 'N/A')}
+    - Utility: {bill_data.get('Utility', 'N/A')}
+    - Start Date: {bill_data.get('Start Date', 'N/A')}
+    - End Date: {bill_data.get('End Date', 'N/A')}
+    - Usage: {bill_data.get('Usage', 'N/A')}
+    - Cost: {bill_data.get('Cost', 'N/A')}
+    - Usage Z Score: {bill_data.get('Usage Z Score', 'N/A')}
+    - Rate Z Score: {bill_data.get('Rate Z Score', 'N/A')}
+    - Duplicated: {bill_data.get('Duplicate', 'N/A')}
+    - Gap Detected: {bill_data.get('Gap', 'N/A')}
+
+    Provide a short, easy-to-understand summary. Do not use technical jargon.
+    """
+    
+    chatHistory = []
+    chatHistory.push({ "role": "user", "parts": [{ "text": prompt }] })
+    payload = { "contents": chatHistory }
+    apiKey = ""
+    apiUrl = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={apiKey}"
+
+    try:
+        response = requests.post(
+            apiUrl,
+            headers={ 'Content-Type': 'application/json' },
+            data=json.dumps(payload)
+        )
+        response.raise_for_status()
+        result = response.json()
+        if result.get("candidates") and result["candidates"][0].get("content"):
+            return result["candidates"][0]["content"]["parts"][0]["text"]
+        return "AI could not generate a summary."
+    except Exception as e:
+        return f"Error from AI: {str(e)}"
+
+
 # --- CORE LOGIC FUNCTIONS ---
 
 def get_false_positive_list(client_name, fp_file):
@@ -339,7 +386,7 @@ def generate_summary_plots(df):
     issues_df = issues_df[issues_df['Count'] > 0].sort_values(by='Count', ascending=False)
 
     if issues_df.empty:
-        st.success("No major data quality issues were found! �")
+        st.success("No major data quality issues were found! 🎉")
     else:
         fig, ax = plt.subplots(figsize=(14, 7))
         sns.barplot(x='Count', y='Issue', hue='Issue', data=issues_df, palette='viridis', orient='h', legend=False, ax=ax)
@@ -364,4 +411,3 @@ if st.button('Run Analysis'):
             generate_summary_plots(df_processed)
     else:
         st.warning("Please upload a raw data file to begin the analysis.")
-�
