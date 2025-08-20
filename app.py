@@ -54,7 +54,7 @@ def generate_ai_summary(bill_data):
     """
     
     chatHistory = []
-    chatHistory.push({ "role": "user", "parts": [{ "text": prompt }] })
+    chatHistory.append({ "role": "user", "parts": [{ "text": prompt }] })
     payload = { "contents": chatHistory }
     apiKey = ""
     apiUrl = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={apiKey}"
@@ -278,6 +278,13 @@ def analyze_data(file_path, client_name, fp_file):
         fp_list = get_false_positive_list(client_name, fp_file)
         df['is_false_positive'] = df['Location Bill ID'].isin(fp_list)
 
+        # Call the AI to generate a summary for each flagged anomaly
+        df['AI_Summary'] = ''
+        for index, row in df.iterrows():
+            if row['High Value Anomalies']:
+                summary = generate_ai_summary(row)
+                df.loc[index, 'AI_Summary'] = summary
+
         core_identifying_columns = [
             'Property Name', 'Location Bill ID', 'Control Number', 'Conservice ID or Yoda Prop Code', 'Provider Name',
             'Utility', 'Account Number', 'Meter Number', 'Unique Meter ID', 'Start Date', 'End Date',
@@ -315,7 +322,7 @@ def analyze_data(file_path, client_name, fp_file):
             'Meter_First_Seen'
         ]
 
-        master_column_order = core_identifying_columns + rate_columns + moved_columns + primary_flags + calculated_statistical_columns
+        master_column_order = core_identifying_columns + rate_columns + moved_columns + primary_flags + calculated_statistical_columns + ['AI_Summary']
 
         df = df.reindex(columns=master_column_order, fill_value=np.nan)
         
@@ -386,7 +393,7 @@ def generate_summary_plots(df):
     issues_df = issues_df[issues_df['Count'] > 0].sort_values(by='Count', ascending=False)
 
     if issues_df.empty:
-        st.success("No major data quality issues were found! 🎉")
+        st.success("No major data quality issues were found! �")
     else:
         fig, ax = plt.subplots(figsize=(14, 7))
         sns.barplot(x='Count', y='Issue', hue='Issue', data=issues_df, palette='viridis', orient='h', legend=False, ax=ax)
@@ -411,3 +418,4 @@ if st.button('Run Analysis'):
             generate_summary_plots(df_processed)
     else:
         st.warning("Please upload a raw data file to begin the analysis.")
+�
