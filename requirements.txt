@@ -5,5 +5,4 @@ matplotlib
 seaborn
 openpyxl
 requests
-json
 time
