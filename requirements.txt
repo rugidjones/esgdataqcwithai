@@ -1,0 +1,9 @@
+streamlit
+pandas
+xlsxwriter
+matplotlib
+seaborn
+openpyxl
+requests
+json
+time
