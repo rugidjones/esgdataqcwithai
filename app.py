@@ -20,8 +20,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="xlsxwriter")
 
 
 # --- UI LAYOUT ---
-st.title("Utility Bill Data Quality Analyzer")
-st.markdown("This tool performs automated data quality checks and generates a detailed report.")
+st.title("AI-Powered Utility Bill Data Quality Analyzer")
+st.markdown("This tool performs automated data quality checks and generates a detailed report with AI-powered insights.")
 
 # Get client name dynamically
 current_client_name = st.text_input("Please enter the client name:", value="ClientA")
@@ -34,6 +34,7 @@ uploaded_fp_file = st.file_uploader("Upload false_positives_CAPREIT.txt (or clic
 def generate_ai_summary(bill_data):
     """
     Calls the Gemini API to generate a natural language summary of an anomaly.
+    This function will require an API key to be set as a secret.
     """
     prompt = f"""
     Analyze the following utility bill data and provide a concise, natural language explanation of why it might be considered an anomaly.
@@ -49,21 +50,27 @@ def generate_ai_summary(bill_data):
     - Rate Z Score: {bill_data.get('Rate Z Score', 'N/A')}
     - Duplicated: {bill_data.get('Duplicate', 'N/A')}
     - Gap Detected: {bill_data.get('Gap', 'N/A')}
-
+    
     Provide a short, easy-to-understand summary. Do not use technical jargon.
     """
     
     chatHistory = []
     chatHistory.append({ "role": "user", "parts": [{ "text": prompt }] })
     payload = { "contents": chatHistory }
-    apiKey = ""
+    
+    # We will get the API key from a secret in the Cloud Run environment
+    apiKey = os.environ.get("GEMINI_API_KEY", "")
     apiUrl = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={apiKey}"
+
+    if not apiKey:
+        return "API key is not set. Cannot generate AI summary."
 
     try:
         response = requests.post(
             apiUrl,
             headers={ 'Content-Type': 'application/json' },
-            data=json.dumps(payload)
+            data=json.dumps(payload),
+            timeout=30 # Set a timeout for the API call
         )
         response.raise_for_status()
         result = response.json()
@@ -72,7 +79,6 @@ def generate_ai_summary(bill_data):
         return "AI could not generate a summary."
     except Exception as e:
         return f"Error from AI: {str(e)}"
-
 
 # --- CORE LOGIC FUNCTIONS ---
 
@@ -280,10 +286,14 @@ def analyze_data(file_path, client_name, fp_file):
 
         # Call the AI to generate a summary for each flagged anomaly
         df['AI_Summary'] = ''
-        for index, row in df.iterrows():
-            if row['High Value Anomalies']:
-                summary = generate_ai_summary(row)
-                df.loc[index, 'AI_Summary'] = summary
+        with st.spinner("Generating AI Summaries... This may take a moment."):
+            for index, row in df.iterrows():
+                # Only call AI for anomalies that are not false positives
+                if (row['High Value Anomalies'] or row['Negative Usage'] or row['Duplicate']) and not row['is_false_positive']:
+                    summary = generate_ai_summary(row)
+                    df.loc[index, 'AI_Summary'] = summary
+                    # Add a small delay to avoid hitting API rate limits
+                    time.sleep(1)
 
         core_identifying_columns = [
             'Property Name', 'Location Bill ID', 'Control Number', 'Conservice ID or Yoda Prop Code', 'Provider Name',
@@ -393,7 +403,7 @@ def generate_summary_plots(df):
     issues_df = issues_df[issues_df['Count'] > 0].sort_values(by='Count', ascending=False)
 
     if issues_df.empty:
-        st.success("No major data quality issues were found! �")
+        st.success("No major data quality issues were found! 🎉")
     else:
         fig, ax = plt.subplots(figsize=(14, 7))
         sns.barplot(x='Count', y='Issue', hue='Issue', data=issues_df, palette='viridis', orient='h', legend=False, ax=ax)
@@ -418,4 +428,3 @@ if st.button('Run Analysis'):
             generate_summary_plots(df_processed)
     else:
         st.warning("Please upload a raw data file to begin the analysis.")
-�
